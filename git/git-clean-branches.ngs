@@ -1,0 +1,29 @@
+#!/usr/bin/env ngs
+
+F decode(s:Str, hints:Hash) {
+	guard try hints['process'].command.argv[0] == 'git'
+	guard try hints['process'].command.argv[1] == 'branch'
+	
+	s.lines().map(F(line) { 
+		parts = line.split("/")
+		start =	econd {
+			parts[1] == "heads" 2
+			parts[1] == "remotes" 3
+		}
+		parts[start..null].join("/")
+	})
+}
+
+F main(real_delete:Bool=false, merged:Str="HEAD") {
+	$(git remote prune origin)
+	
+	remoteBranches = ``git branch --remotes '--format=%(refname)'``
+	localBranches = ``git branch '--format=%(refname)' "--merged=${merged}"``
+	
+	toRemove = localBranches - remoteBranches
+	if not (real_delete) then echo("DRY RUN activated (run with true for a real run)")
+	toRemove.each(F(branch) {
+		log("Removing branch -- ${branch}")
+		if real_delete then `git branch -d ${branch}`
+	})
+}
