@@ -1,0 +1,16 @@
+#!/usr/bin/env ngs
+
+F squish_dig(cmd:CommandsPipeline) {
+	`$cmd`.lines()
+}
+
+F main() {
+	echo("CLI version of simplified http://dns.squish.net/")
+	echo("Usage: ${ARGV0} <FQDN>")
+	exit()
+}
+
+F main(fqdn:Str) {
+	root_nses = squish_dig(%(dig "+short" NS))
+	echo(root_nses)
+}
