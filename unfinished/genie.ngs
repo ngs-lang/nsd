@@ -1,0 +1,34 @@
+#!/usr/bin/env ngs
+
+API_URL = "https://api.opsgenie.com/v2"
+
+F request(url:Str, params:Hash={}) {
+	auth_hdr = "Authorization: GenieKey ${ENV.OPSGENIE_KEY}"
+	params = Argv({['--data-urlencode']: params.map("$X=$Y")})
+	``log: curl -G -s $*{params} -H $auth_hdr $url``
+}
+
+F request_data(url:Str, paged:Bool=true) {
+	ret = collector while url {
+		response = request(url)
+		collect(response.data)
+		url = paged and (try response.paging.next)
+	}
+	paged returns flatten(ret)
+	ret[0]
+}
+
+F admins() {
+	url = API_URL / 'teams'
+	teams_names = request_data(url).name
+	collector/Set() teams_names.each(F(id) {
+		members = request_data("${url}/${id}?identifierType=name", paged=false).get('members', [])
+		members.filter({'role': 'admin'}).each(F(user) {
+			collect(user.user.username)
+		})
+	})
+}
+
+F main() {
+	admins().echo()
+}
