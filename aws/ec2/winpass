@@ -1,0 +1,9 @@
+#!/usr/bin/env ngs
+
+F main(instance_id:Str, key_file:Str=ENV.HOME / '.ssh' / 'id_rsa') {
+	data = ``aws ec2 get-password-data --instance-id $instance_id``.PasswordData
+	if not(data) {
+		exit("No password available (yet)")
+	}
+	$(echo $data | base64 --decode | openssl rsautl -decrypt -inkey $key_file).echo()
+}
