@@ -20,7 +20,7 @@ F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:In
 	while true {
 		events = ``aws cloudformation describe-stack-events --stack-name $stack_name``.reverse()
 		start = if last_seen {
-			events.index(last_seen) + 1
+			events.index(X==last_seen) + 1
 		} else {
 			max(len(events) - start_limit, 0)
 		}
