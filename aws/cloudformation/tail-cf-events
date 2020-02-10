@@ -28,9 +28,8 @@ F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:In
 
 		for e in new_events {
 
-			t = e.Timestamp.epoch_time()
 			if last_seen {
-				if t - last_seen.Timestamp.epoch_time() > empty_line_seconds {
+				if e.Timestamp.epoch_time() - last_seen.Timestamp.epoch_time() > empty_line_seconds {
 					echo("")
 				}
 			}
