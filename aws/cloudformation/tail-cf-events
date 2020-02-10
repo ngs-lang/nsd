@@ -22,7 +22,7 @@ F main(stack_name:Str, interval:Int=2, start_limit=20, empty_line_seconds=60) {
 		start = if last_seen {
 			events.index(last_seen) + 1
 		} else {
-			max([len(events) - start_limit, 0])
+			max(len(events) - start_limit, 0)
 		}
 		new_events = events[start..null]
 
