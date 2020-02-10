@@ -13,7 +13,7 @@
 
 F epoch_time(s:Str) Time(s.split('.')[0] + '.000Z').Int() # NGS doesn't handle fractions of seconds yet
 
-F main(stack_name:Str, interval:Int=2, start_limit=20, empty_line_seconds=60) {
+F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:Int=60) {
 
 	last_seen = null
 
