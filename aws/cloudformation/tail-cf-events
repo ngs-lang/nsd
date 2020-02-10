@@ -1,0 +1,44 @@
+#!/usr/bin/env ngs
+
+#   {
+#     "StackId": "arn:aws:cloudformation:eu-west-1:XXX:stack/sher-test-blah-static-ip/YYY",
+#     "EventId": "EcsSubnet1-025b44a1-1b75-47db-a0c9-1428f3f716fc",
+#     "StackName": "sher-test-blah-static-ip",
+#     "LogicalResourceId": "EcsSubnet1",
+#     "PhysicalResourceId": "subnet-0d9c800d3f5a6b162",
+#     "ResourceType": "AWS::EC2::Subnet",
+#     "Timestamp": "2020-02-07T11:03:06.420Z",
+#     "ResourceStatus": "DELETE_IN_PROGRESS"
+#   }
+
+F epoch_time(s:Str) Time(s.split('.')[0] + '.000Z').Int() # NGS doesn't handle fractions of seconds yet
+
+F main(stack_name:Str, interval:Int=2, start_limit=20, empty_line_seconds=60) {
+
+	last_seen = null
+
+	while true {
+		events = ``aws cloudformation describe-stack-events --stack-name $stack_name``.reverse()
+		start = if last_seen {
+			events.index(last_seen) + 1
+		} else {
+			max([len(events) - start_limit, 0])
+		}
+		new_events = events[start..null]
+
+		for e in new_events {
+
+			t = e.Timestamp.epoch_time()
+			if last_seen {
+				if t - last_seen.Timestamp.epoch_time() > empty_line_seconds {
+					echo("")
+				}
+			}
+
+			reason = '  ' +? e.get('ResourceStatusReason', '')
+			echo("${e.Timestamp}  ${e.ResourceType.Str(50)} ${e.LogicalResourceId.Str(30)} ${e.ResourceStatus}${reason}")
+			last_seen = e
+		}
+		$(sleep $interval)
+	}
+}
