@@ -11,16 +11,48 @@
 #     "ResourceStatus": "DELETE_IN_PROGRESS"
 #   }
 
-F epoch_time(s:Str) Time(s.split('.')[0] + '.000Z').Int() # NGS doesn't handle fractions of seconds yet
+F normalize_time_str(s:Str) s.split('.')[0] + '.000Z'
+
+F normalize_time_str(s:Str) {
+	# Special case - no dot: 2020-02-11T10:55:19Z
+	# Thanks AWS for consistency once again!
+	guard '.' not in s
+	s[0..-1] + '.000Z'
+}
+
+F epoch_time(s:Str) normalize_time_str(s).Time().Int() # NGS doesn't handle fractions of seconds yet
+
+F get_events(stack_name:Str, interval:Int) {
+	events = null
+	last_error = null
+	while not(events) {
+		try {
+			events = ``aws cloudformation describe-stack-events --stack-name $stack_name 2>${true}``.reverse()
+		} catch(e:ProcessFail) {
+			msg = Lines('[stderr] ' + e.process.stderr.lines().without('') )
+			if msg != last_error {
+				error(msg)
+				error("There was an error getting events for stack ${stack_name}. Will be retrying.")
+				last_error = msg
+			}
+			$(sleep $interval)
+		}
+	}
+	events
+}
 
 F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:Int=60) {
 
-	last_seen = null
+	last_seen_event = null
+	last_update_start_event = null
 
 	while true {
-		events = ``aws cloudformation describe-stack-events --stack-name $stack_name``.reverse()
-		start = if last_seen {
-			events.index(X==last_seen) + 1
+
+		events = get_events(stack_name, interval)
+
+		start = if last_seen_event in events {
+			# TODO: Fix "index() is returning null" when new stack is created but last_seen_event is from previous
+			events.index(X==last_seen_event) + 1
 		} else {
 			max(len(events) - start_limit, 0)
 		}
@@ -28,15 +60,35 @@ F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:In
 
 		for e in new_events {
 
-			if last_seen {
-				if e.Timestamp.epoch_time() - last_seen.Timestamp.epoch_time() > empty_line_seconds {
+			if last_seen_event {
+				if e.Timestamp.epoch_time() - last_seen_event.Timestamp.epoch_time() > empty_line_seconds {
 					echo("")
 				}
 			}
 
 			reason = '  ' +? e.get('ResourceStatusReason', '')
 			echo("${e.Timestamp}  ${e.ResourceType.Str(50)} ${e.LogicalResourceId.Str(30)} ${e.ResourceStatus}${reason}")
-			last_seen = e
+			last_seen_event = e
+
+			if e.ResourceType == 'AWS::CloudFormation::Stack' {
+				if e.ResourceStatus in %[CREATE_IN_PROGRESS UPDATE_IN_PROGRESS] {
+					last_update_start_event = e
+				}
+				# TODO: only print outputs for last UPDATE_COMPLETE
+				if e.ResourceStatus.ends_with('_COMPLETE') {
+					outputs = ``aws cloudformation describe-stacks --stack-name $stack_name``.the_one().get('Outputs', []).sort('OutputKey')
+					echo("")
+					for o in outputs {
+						echo("[output] ${o.OutputKey} ${o.OutputValue} - ${o.Description}")
+
+					}
+					if last_update_start_event {
+						echo("[time] Last create/update/delete took ${e.Timestamp.epoch_time() - last_update_start_event.Timestamp.epoch_time()} seconds")
+					}
+					echo("")
+				}
+			}
+
 		}
 		$(sleep $interval)
 	}
