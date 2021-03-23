@@ -37,7 +37,7 @@ F process(a:Arr) a.map(process).reject(empty)
 
 # Process an object/dictionary/hash
 # .mapv(process) -- process each value
-# .rejectv(empty) -- remove any value that became a empty
+# .rejectv(empty) -- remove any key/value pair where the value became empty
 F process(h:Hash) h.mapv(process).rejectv(empty)
 
 F main() fetch().process().encode_json().echo()
