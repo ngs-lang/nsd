@@ -7,35 +7,38 @@
 # $ echo '{"a": [1,1,2], "b": [1,3], "c": [1,2,3]}' | ./deep-uniq.ngs 
 # --> { "a": [ 1, 2 ], "b": [ 3 ] }
 
+# Leaf values that were seen up until now
 seen = Set()
 
-doc "Remove-me" marker
-type Marker
+# Check for empty array or empty bject
+# AnyOf(Arr, Hash) -- a pattern that would match an array or a hash/dictionary/object
+# x =~ AnyOf(Arr, Hash) -- check whether x matches the pattern
+# not(x) -- true if array or object do not have elements
+F empty(x) x =~ AnyOf(Arr, Hash) and not(x)
 
+# Process a leaf that was not seen before.
+# Add to seen and return the value as is.
 F process(x) {
 	seen.push(x)
 	x
 }
 
+# Process a leaf that was seen before.
+# Return empty object. It will be filtered out.
 F process(x) {
 	guard x in seen
-	Marker()
+	{} # Empty object to be removed
 }
 
-F process(a:Arr) a.map(process).reject(Marker) or Marker()
+# Process an array
+# .map(process) -- process each element
+# .reject(empty) -- remove any element that became a empty
+F process(a:Arr) a.map(process).reject(empty)
 
-F process(h:Hash) h.mapv(process).rejectv(Marker) or Marker()
+# Process an object/dictionary/hash
+# .mapv(process) -- process each value
+# .rejectv(empty) -- remove any value that became a empty
+F process(h:Hash) h.mapv(process).rejectv(empty)
 
-F main() {
-	data = fetch()
-	
-	section "Work around top level being the Marker" {
-		global JsonData
-		top_level_type = typeof(data)
-		doc Define how to convert Marker into data structure that is convertible to JSON
-		doc Return empty object of the correct type: Arr or Hash
-		F JsonData(m:Marker) top_level_type()
-	}
+F main() fetch().process().encode_json().echo()
 
-	data.process().encode_json().echo()
-}
