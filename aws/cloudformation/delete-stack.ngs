@@ -1,0 +1,62 @@
+#!/usr/bin/env ngs
+
+F main(stack:Str) {
+	log("Will delete stack $stack")
+
+	status_to_handle = AnyOf([
+		"CREATE_COMPLETE"
+		"UPDATE_COMPLETE"
+		"DELETE_FAILED"
+	])
+
+	resources = ``aws cloudformation describe-stack-resources --stack-name $stack``.filter({"ResourceStatus": status_to_handle})
+
+	section "Databases" {
+
+		db_instances = resources.filter({"ResourceType": "AWS::RDS::DBInstance"})
+
+		log("Found ${db_instances.len()} RDS DB instance(s)")
+
+		if db_instances {
+			db_instances_desc = ``log: aws rds describe-db-instances``.Hash('DBInstanceIdentifier')
+		}
+
+		for i in db_instances {
+			log("+ Handling RDS DB instance: ${i.filterk(AnyOf(%[LogicalResourceId PhysicalResourceId ResourceStatus]))}")
+			desc = db_instances_desc[i.PhysicalResourceId]
+			if desc.DeletionProtection {
+				log("  + Deletion protection is on. Switching off.")
+				$(log: aws rds modify-db-instance --db-instance-identifier ${i.PhysicalResourceId} --no-deletion-protection)
+			} else {
+				log("  + Deletion protection is off.")
+			}
+		}
+
+	}
+
+	section "S3 buckets" {
+		buckets = resources.filter({"ResourceType": "AWS::S3::Bucket"})
+		for b in buckets {
+			log("+ Handling S3 bucket: ${b.filterk(AnyOf(%[LogicalResourceId PhysicalResourceId ResourceStatus]))}")
+			while true {
+				versions = ``log: aws s3api list-object-versions --bucket ${b.PhysicalResourceId} --no-paginate``
+				if versions is not Arr {
+					break
+				}
+				if not(versions) {
+					break
+				}
+				versions.pmap(10, F(v) {
+					log("  + Deleting ${b.PhysicalResourceId}/${v.Key}@${v.VersionId} (${v.LastModified})")
+					$(log: aws s3api delete-object --bucket ${b.PhysicalResourceId} --key ${v.Key} --version-id ${v.VersionId})
+				})
+			}
+		}
+	}
+
+	$(log: aws cloudformation delete-stack --stack-name $stack)
+
+	log("Please confirm stack deleteion in AWS web console or using AWS CLI. Stack name: $stack")
+
+}
+
