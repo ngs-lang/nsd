@@ -1,0 +1,16 @@
+#!/usr/bin/env ngs
+
+F main() {
+	domains = ``aws es list-domain-names``.DomainName
+	cc_fiels = %[InstanceType InstanceCount DedicatedMasterType DedicatedMasterCount]
+	info = domains.pmap(5, F(d) {
+		t = ``aws es describe-elasticsearch-domain --domain-name $d``.DomainStatus
+		cc = t.ElasticsearchClusterConfig
+		{
+			'Name': t.DomainName
+			'Version': t.ElasticsearchVersion
+		} + cc_fiels.Hash(cc.get(X))
+	})
+	table = Table2::Table(info)
+	echo(table)
+}
