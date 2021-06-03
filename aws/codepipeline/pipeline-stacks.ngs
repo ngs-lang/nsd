@@ -1,0 +1,40 @@
+#!/usr/bin/env ngs
+
+# Lists all CloudFormation stacks that are managed by the pipeline.
+
+# Examples ("LOG" lines go to stderr):
+
+#  $ ./pipeline-stacks.ngs sher2-pipeline
+#  [LOG 2021-06-03 10:41:43 IDT] Running command: aws codepipeline get-pipeline --name sher2-pipeline
+#  [LOG 2021-06-03 10:41:45 IDT] Found 4 stacks managed by pipeline
+#  sher2-cog
+#  sher2-oidc-provider
+#  sher2-cog-idp
+#  sher2-uploader
+
+#  $ ./pipeline-stacks.ngs sher2-pipeline -j
+#  [LOG 2021-06-03 10:41:47 IDT] Running command: aws codepipeline get-pipeline --name sher2-pipeline
+#  [LOG 2021-06-03 10:41:49 IDT] Found 4 stacks managed by pipeline
+#  [ "sher2-cog", "sher2-oidc-provider", "sher2-cog-idp", "sher2-uploader" ]
+
+
+
+# https://docs.aws.amazon.com/codepipeline/latest/userguide/action-reference-CloudFormation.html
+
+_ACTIONS_FILTER = {
+	"actionTypeId": {
+		"category": "Deploy"
+		"provider": "CloudFormation"
+	}
+	"configuration": {
+		"ActionMode": AnyOf("CHANGE_SET_EXECUTE", "CREATE_UPDATE", "REPLACE_ON_FAILURE")
+	}
+}
+
+F main(name:Str, j:Bool=false) {
+	p = ``log: aws codepipeline get-pipeline --name $name``
+	names = p.pipeline.stages.actions.flatten().filter(_ACTIONS_FILTER).configuration.StackName
+	log("Found ${names.len()} stacks managed by pipeline")
+	transform = if j then encode_json else Lines
+	names.transform().echo()
+}
