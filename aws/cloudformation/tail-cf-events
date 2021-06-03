@@ -24,17 +24,12 @@ F epoch_time(s:Str) normalize_time_str(s).Time().Int() # NGS doesn't handle frac
 
 F get_events(stack_name:Str, interval:Int) {
 	events = null
-	last_error = null
 	while not(events) {
 		try {
 			events = ``aws cloudformation describe-stack-events --stack-name $stack_name 2>${true}``.reverse()
 		} catch(e:ProcessFail) {
-			msg = Lines('[stderr] ' + e.process.stderr.lines().without('') )
-			if msg != last_error {
-				error(msg)
-				error("There was an error getting events for stack ${stack_name}. Will be retrying.")
-				last_error = msg
-			}
+			guard e.process.stderr ~ /Stack.*does not exist$/i  # We don't know how to handle any other error
+			error("Stack does not exist. Retrying in ${interval} seconds.")
 			$(sleep $interval)
 		}
 	}
@@ -79,7 +74,7 @@ F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:In
 					outputs = ``aws cloudformation describe-stacks --stack-name $stack_name``.the_one().get('Outputs', []).sort('OutputKey')
 					echo("")
 					for o in outputs {
-						echo("[output] ${o.OutputKey} ${o.OutputValue} - ${o.Description}")
+						echo("[output] ${o.OutputKey} ${o.OutputValue} - ${o.get('Description', '(no description)')}")
 
 					}
 					if last_update_start_event {
