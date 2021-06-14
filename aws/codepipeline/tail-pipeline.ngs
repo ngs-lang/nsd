@@ -1,0 +1,41 @@
+#!/usr/bin/env ngs
+
+F main(name:Str) {
+	last_exec = null
+	FIEDS = %[pipelineExecutionId status startTime lastUpdateTime sourceRevisions]
+	while true {
+		section "Last ExecutionId" {
+			pipelineExecutionSummaries = ``log: aws codepipeline list-pipeline-executions --pipeline-name $name``
+			pipelineExecutionId = pipelineExecutionSummaries[0].pipelineExecutionId
+		}
+
+		actionExecutionDetails = ``log: aws codepipeline list-action-executions --pipeline-name $name --filter "pipelineExecutionId=${pipelineExecutionId}"``
+
+		stageStates = ``log: aws codepipeline get-pipeline-state --name $name``
+		actions = collector {
+			for stageState in stageStates {
+				for actionState in stageState.actionStates {
+					le = actionState.get('latestExecution', {})
+					is_last = actionExecutionDetails.any({
+						'pipelineExecutionId': pipelineExecutionId
+						'stageName': stageState.stageName
+						'actionName': actionState.actionName
+					})
+					collect({
+						'stage': stageState.stageName
+						'action': actionState.actionName
+						'when': le.get('lastStatusChange')
+						'status': if is_last then le.get('status')
+					})
+				}
+			}
+		}
+
+		t = Table2::Table("Pipeline ${name} ${Time()}")
+		%[stage action when status].each(Table2::register_column(t, X))
+		actions.each(t.push(X))
+		echo(t)
+
+		$(sleep 10)
+	}
+}
