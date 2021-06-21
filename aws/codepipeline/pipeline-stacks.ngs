@@ -32,6 +32,7 @@ _ACTIONS_FILTER = {
 }
 
 F main(name:Str, j:Bool=false) {
+	# TODO: aws cloudformation describe-stacks, display status of each stack
 	p = ``log: aws codepipeline get-pipeline --name $name``
 	names = p.pipeline.stages.actions.flatten().filter(_ACTIONS_FILTER).configuration.StackName
 	log("Found ${names.len()} stacks managed by pipeline")

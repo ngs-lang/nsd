@@ -1,6 +1,6 @@
 #!/usr/bin/env ngs
 
-F main(stack:Str) {
+F main(stack:Str, wait:Bool=true) {
 	log("Will delete stack $stack")
 
 	status_to_handle = AnyOf([
@@ -54,9 +54,19 @@ F main(stack:Str) {
 		}
 	}
 
+	if wait {
+		log("Acquiring StackId. Needed for waiting for stack deletion.")
+		stack_id = ``log: aws cloudformation describe-stacks --stack-name $stack``.the_one({'StackName': stack}).StackId
+		log("StackId is $stack_id")
+	}
+
 	$(log: aws cloudformation delete-stack --stack-name $stack)
 
-	log("Please confirm stack deleteion in AWS web console or using AWS CLI. Stack name: $stack")
-
+	if wait {
+		$(log: aws cloudformation wait stack-delete-complete --stack-name $stack_id)
+		log("Stack $stack deleted")
+	} else {
+		log("Not waiting. Please confirm stack deleteion in AWS web console or using AWS CLI. Stack name: $stack")
+	}
 }
 
