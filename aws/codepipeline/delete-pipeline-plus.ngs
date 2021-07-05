@@ -1,0 +1,20 @@
+#!/usr/bin/env ngs
+
+F main(name:Str, j:Bool=false) {
+	log("Looking for stacks created by the pipeline")
+	# TODO: GitHub issue - easy way to run a script from the same directory
+	my_dir = `line: dirname $ARGV0`
+
+	resource_pattern = {
+		"ResourceType": "AWS::CodePipeline::Pipeline"
+		"PhysicalResourceId": name
+	}.encode_json()
+	pipeline_stack = ``log: "${my_dir}/../cloudformation/find-resources.ngs" $resource_pattern``.the_one().StackName
+
+	log("Pipeline stack is ${pipeline_stack}")
+
+	stacks = ``log: "${my_dir}/pipeline-stacks.ngs" $name -j``
+	(stacks.reverse() + [pipeline_stack]).each(F(stack) {
+		$(log: "${my_dir}/../cloudformation/delete-stack.ngs" $stack)
+	})
+}

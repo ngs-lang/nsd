@@ -1,0 +1,19 @@
+#!/usr/bin/env ngs
+
+# ["StackName","StackId","LogicalResourceId","PhysicalResourceId","ResourceType","Timestamp","ResourceStatus","DriftInformation"]
+
+F main(pattern:Str, parallel:Int=5) {
+
+	p = pattern.decode_json()
+
+	# TODO: pagination
+	stacks = ``aws cloudformation describe-stacks``.StackName
+
+	# Beware of: An error occurred (Throttling) when calling the DescribeStackResources operation (reached max retries: 2): Rate exceeded
+	result = stacks.pmap(parallel, F(stack) {
+		log("Looking at stack ${stack}")
+		resources = ``aws cloudformation describe-stack-resources --stack-name $stack``
+		resources.filter(p)
+	}).flatten().encode_json().echo()
+
+}
