@@ -28,6 +28,7 @@ ns {
 
 		if base.has('oneOf') {
 			results = base.oneOf.map(is_primitive(root_schema, X))
+			not(results) throws Error("Empty oneOf")
 			results.all(true) returns true
 			results.all(false) returns false
 			throw Error("Inconsistent oneOf")
