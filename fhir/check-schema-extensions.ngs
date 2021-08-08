@@ -1,0 +1,76 @@
+#!/usr/bin/env ngs
+
+# Prerequisites: ngs and jq installed (on Linux or MacOS)
+#   ngs - https://github.com/ngs-lang/ngs
+#   jq - https://stedolan.github.io/jq/
+# Run: ./check-schema-extensions.ngs ~/Downloads/fhir.schema.json >mismatches.json
+
+ns {
+
+	PRIMITIVE_TYPE = {
+		'boolean': true
+		'string': true
+		'number': true
+	}
+
+	F is_primitive(root_schema, schema) {
+		schema.has('const') returns true
+		schema.has('properties') returns false
+		base = if schema =~ {"type": "array"} then {
+			schema.items
+		} else {
+			schema
+		}
+		# Enum seems to list only primitive types, maybe confirm later
+		base.has('enum') returns true
+
+		base.has('type') returns PRIMITIVE_TYPE[base.type]
+
+		if base.has('oneOf') {
+			results = base.oneOf.map(is_primitive(root_schema, X))
+			results.all(true) returns true
+			results.all(false) returns false
+			throw Error("Inconsistent oneOf")
+		}
+
+		section "Follow the $ref" {
+			ref = base['$ref']
+			t = ref - Pfx('#/definitions/')
+			debug("Following ref $t")
+			ref = root_schema.definitions[t]
+			is_primitive(root_schema, ref)
+		}
+	}
+
+	F main(schema_file_name:Str) {
+		log("Loading Schema")
+		schema = fetch(schema_file_name)
+		log("Checking resources")
+		resources = schema.definitions.filterv({"properties": {"resourceType": Any}})
+		log("Found resources: ${resources.keys().join(', ')}")
+		mismatches = collector resources.each(F(resource_type_name, resource_schema) {
+			log("+ ${resource_type_name}")
+			# Look into properties not starting with underscore
+			resource_schema.properties.rejectk(Pfx('_')).each(F(element_name, property_schema) {
+				log("  + ${element_name}")
+
+				should_have_extension = (element_name !~ AnyOf('id', 'resourceType')) and is_primitive(schema, property_schema)
+				has_extenstion = resource_schema.properties.has("_${element_name}")
+
+				log("  + ${element_name} ${should_have_extension} ${has_extenstion}")
+
+				if has_extenstion != should_have_extension {
+					error("${resource_type_name}.${element_name} should_have_extension=${should_have_extension} has_extenstion=${has_extenstion}")
+					collect({
+						'resourceType': resource_type_name
+						'element': element_name
+						'should_have_extension': should_have_extension
+						'has_extenstion': has_extenstion
+					})
+				}
+
+			})
+		})
+		mismatches.encode_json({'pretty': true}).echo()
+	}
+}
