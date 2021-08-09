@@ -13,7 +13,8 @@ ns {
 		'number': true
 	}
 
-	F is_primitive(root_schema, schema) {
+	doc Check whether schema describes a primitive data type
+	F is_primitive(root_schema, schema, track_of_refs) {
 		schema.has('const') returns true
 		schema.has('properties') returns false
 		base = if schema =~ {"type": "array"} then {
@@ -21,25 +22,26 @@ ns {
 		} else {
 			schema
 		}
+
 		# Enum seems to list only primitive types, maybe confirm later
 		base.has('enum') returns true
 
-		base.has('type') returns PRIMITIVE_TYPE[base.type]
+		base.has('type') returns PRIMITIVE_TYPE[base.type]  # Will throw exception for unkown types (types which are not in PRIMITIVE_TYPE)
 
 		if base.has('oneOf') {
-			results = base.oneOf.map(is_primitive(root_schema, X))
+			results = base.oneOf.map(is_primitive(root_schema, X, track_of_refs))
 			not(results) throws Error("Empty oneOf")
 			results.all(true) returns true
 			results.all(false) returns false
 			throw Error("Inconsistent oneOf")
 		}
 
-		section "Follow the $ref" {
+		section 'Follow the $ref' {
 			ref = base['$ref']
-			t = ref - Pfx('#/definitions/')
-			debug("Following ref $t")
+			track_of_refs.push(ref)
+			t = ref - Pfx('#/definitions/')  # Removes '#/definitions/' prefix, throws exception if not found
 			ref = root_schema.definitions[t]
-			is_primitive(root_schema, ref)
+			is_primitive(root_schema, ref, track_of_refs)
 		}
 	}
 
@@ -55,7 +57,8 @@ ns {
 			resource_schema.properties.rejectk(Pfx('_')).each(F(element_name, property_schema) {
 				log("  + ${element_name}")
 
-				should_have_extension = (element_name !~ AnyOf('id', 'resourceType')) and is_primitive(schema, property_schema)
+				track_of_refs = []
+				should_have_extension = (element_name !~ AnyOf('id', 'resourceType')) and is_primitive(schema, property_schema, track_of_refs)
 				has_extenstion = resource_schema.properties.has("_${element_name}")
 
 				log("  + ${element_name} ${should_have_extension} ${has_extenstion}")
@@ -67,6 +70,7 @@ ns {
 						'element': element_name
 						'should_have_extension': should_have_extension
 						'has_extenstion': has_extenstion
+						'track_of_refs': track_of_refs
 					})
 				}
 
