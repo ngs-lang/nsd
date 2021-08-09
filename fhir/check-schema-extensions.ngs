@@ -31,6 +31,7 @@ ns {
 		base.has('type') returns PRIMITIVE_TYPE[base.type]  # Will throw exception for unkown types (types which are not in PRIMITIVE_TYPE)
 
 		if base.has('oneOf') {
+			# could be but it's broken: return base.oneOf.map(is_primitive(root_schema, X, track_of_refs)).uniq().the_one()
 			results = base.oneOf.map(is_primitive(root_schema, X, track_of_refs))
 			not(results) throws Error("Empty oneOf")
 			results.all(true) returns true
