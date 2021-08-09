@@ -1,5 +1,7 @@
 #!/usr/bin/env ngs
 
+# Checks whether elements named X have _X extension in the FHIR JSON Schema vs whether they should have the extension
+
 # Prerequisites: ngs and jq installed (on Linux or MacOS)
 #   ngs - https://github.com/ngs-lang/ngs
 #   jq - https://stedolan.github.io/jq/
