@@ -1,5 +1,7 @@
 #!/usr/bin/env ngs
 
+# Warning: uses experimental tr() from NGS commit f96324191e314d441712df5ae8e5735c5dad6335
+
 path = `line: python -c 'import botocore; print(botocore.__file__)'`
 path = `line: dirname $path`
 
@@ -18,7 +20,7 @@ F shape(file, paginator_name, paginator) {
 	}
 	paginator.filterk(AnyOf(SHAPE_FIELDS)).map(F(k, v) {
 		if v is Arr {
-			v = v.join(',')
+			v = "(array):" + v.join(',')
 		}
 		assert(v, Str)
 		keys_stats.dflt(k, Stats()).push(v)
@@ -35,8 +37,10 @@ for paginator_file in paginator_files {
 	})
 }
 
-echo({
+out = {
 	'shapes': shapes_stats
-	'keys': keys_stats  # .tr(Stats -> X.sortv())
-}.encode_json({'pretty': true}))
+	'keys': keys_stats
+}.tr(Stats -> { A.Hash().sortv((>=)) })
+
+echo(out.encode_json({'pretty': true}))
 
