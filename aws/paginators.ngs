@@ -1,0 +1,42 @@
+#!/usr/bin/env ngs
+
+path = `line: python -c 'import botocore; print(botocore.__file__)'`
+path = `line: dirname $path`
+
+log("Botocore location: ${path}")
+
+paginator_files = ``find $path -name 'paginators*.json'``.reject(/-extras/).assert("Paginators not found")
+
+SHAPE_FIELDS = %[input_token limit_key output_token more_results].sort()
+IGNORE_FIELDS = %[result_key non_aggregate_keys].sort()
+EXPECTED_FIELD = AnyOf(SHAPE_FIELDS + IGNORE_FIELDS)
+
+keys_stats = {}
+F shape(file, paginator_name, paginator) {
+	for k in paginator.keys() {
+		assert(k, EXPECTED_FIELD, "Found unexpected field ${k} in ${file} -> ${paginator_name}")
+	}
+	paginator.filterk(AnyOf(SHAPE_FIELDS)).map(F(k, v) {
+		if v is Arr {
+			v = v.join(',')
+		}
+		assert(v, Str)
+		keys_stats.dflt(k, Stats()).push(v)
+		"${k}=${v}"
+	}).sort().join(';')
+}
+
+shapes_stats = Stats()
+for paginator_file in paginator_files {
+	paginators = fetch(paginator_file)
+	log("Processing ${paginator_file}")
+	paginators.pagination.each(F(paginator_name, paginator) {
+		shapes_stats.push(shape(paginator_file, paginator_name, paginator))
+	})
+}
+
+echo({
+	'shapes': shapes_stats
+	'keys': keys_stats  # .tr(Stats -> X.sortv())
+}.encode_json({'pretty': true}))
+
