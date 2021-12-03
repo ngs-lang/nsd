@@ -1,0 +1,12 @@
+#!/usr/bin/env ngs
+
+# Invokes a function and prints result, output, and log
+
+assert(ARGV.none('--function-name'), "--function-name passed but it must be omitted")
+
+t = TmpFile()
+res=``aws lambda invoke --log-type Tail --function-name $*ARGV $t``
+
+echo(res.rejectk('LogResult').encode_json())
+echo("OUT: " + t.read().Lines())
+echo("LOG: " + res.LogResult.decode_base64().Lines())

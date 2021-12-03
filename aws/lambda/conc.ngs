@@ -1,0 +1,28 @@
+#!/usr/bin/env ngs
+
+# Sets provisioned concurrency for the last version,
+# deletes provisioned concurrency for all other versions.
+
+F main(func_name:Str, conc:Int) {
+	versions = ``aws lambda list-versions-by-function --function-name $func_name``.sort('LastModified')
+	v = versions[-1]
+
+	# log("Latest version: $v")
+
+	result = ``log: aws lambda put-provisioned-concurrency-config --function-name $func_name --qualifier ${v.Version} --provisioned-concurrent-executions $conc``
+
+	cleaner = Thread("cleaner", {
+		for vv in versions[0..-1].reject({"Version": '$LATEST'}) {
+			``log: aws lambda delete-provisioned-concurrency-config --function-name $func_name --qualifier ${vv.Version}``
+		}
+	})
+
+	retry(times=1000, sleep=10, body={
+		``log: aws lambda get-provisioned-concurrency-config --function-name $func_name --qualifier ${v.Version}`` =~ {"Status": "READY"}
+	})
+
+	cleaner.join()
+
+	# conf = ``aws lambda get-function-configuration --function-name``
+
+}
