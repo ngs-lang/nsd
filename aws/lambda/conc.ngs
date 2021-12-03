@@ -7,8 +7,6 @@ F main(func_name:Str, conc:Int) {
 	versions = ``aws lambda list-versions-by-function --function-name $func_name``.sort('LastModified')
 	v = versions[-1]
 
-	# log("Latest version: $v")
-
 	result = ``log: aws lambda put-provisioned-concurrency-config --function-name $func_name --qualifier ${v.Version} --provisioned-concurrent-executions $conc``
 
 	cleaner = Thread("cleaner", {
@@ -22,7 +20,4 @@ F main(func_name:Str, conc:Int) {
 	})
 
 	cleaner.join()
-
-	# conf = ``aws lambda get-function-configuration --function-name``
-
 }
