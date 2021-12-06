@@ -9,4 +9,40 @@ res=``aws lambda invoke --log-type Tail --function-name $*ARGV $t``
 
 echo(res.rejectk('LogResult').encode_json())
 echo("OUT: " + t.read().Lines())
-echo("LOG: " + res.LogResult.decode_base64().Lines())
+echo("LOG: " + (log_lines = res.LogResult.decode_base64().Lines()))
+
+each(log_lines.map(X ~ /XRAY TraceId: ([-\w]+)/).filter(), F(m) {
+	# Traces are lagging, waiting for the trace to be available
+	trace = retry(times=10, sleep=1, body={
+		t = ``log: aws xray batch-get-traces --trace-ids ${m[1]}``.Traces
+		# There should be exactly one trace and exactly two segments
+		t !~ [{"Segments": [Any, Any]}] returns null
+		t
+	}).the_one()
+	# tr does not work, todo: open issue
+	# echo(trace.tr({'Document': (Str -> decode_json(X))}).encode_json({'pretty': true}))
+	trace.Segments.each(F(s) {
+		s.Document .= decode_json()
+		s.Document._time = s.Document.end_time - s.Document.start_time
+	})
+	echo('XRAY: ' + trace.encode_json({'pretty': true}).Lines())
+
+	t = collector {
+		F process(d, lvl=0, parent_id=null) {
+			collect({
+				'origin': d.get('origin')
+				'_level': lvl
+				'id': '  ' * lvl + Str(d.id)
+				'parent_id': parent_id or d.get('parent_id')
+				'name': d.name
+				'start_time': d.start_time
+				'end_time': d.end_time
+				'_time': "${((d.end_time - d.start_time) * 1000000.0).round() / 1000.0} ms"
+			})
+			d.get('subsegments', []).each(process(X, lvl+1, "(${d.id})"))
+		}
+		trace.Segments.Document.each(process(X, 0))
+	}
+	t .= sort('start_time')
+	echo(Table(t))
+})
