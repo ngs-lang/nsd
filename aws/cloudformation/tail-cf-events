@@ -36,10 +36,17 @@ F get_events(stack_name:Str, interval:Int) {
 	events
 }
 
-F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:Int=60) {
+F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:Int=60, depth:Int=0) {
 
 	last_seen_event = null
 	last_update_start_event = null
+
+	depth_str = '*** ' * depth
+
+	if depth {
+		echo("")
+		echo("${depth_str}Descending into nested stack ${stack_name}")
+	}
 
 	while true {
 
@@ -62,28 +69,43 @@ F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:In
 			}
 
 			reason = '  ' +? e.get('ResourceStatusReason', '')
-			echo("${e.Timestamp}  ${e.ResourceType.Str(50)} ${e.LogicalResourceId.Str(30)} ${e.ResourceStatus}${reason}")
+			echo("${depth_str}${e.Timestamp}  ${e.ResourceType.Str(50)} ${e.LogicalResourceId.Str(30)} ${e.ResourceStatus}${reason}")
 			last_seen_event = e
 
 			if e.ResourceType == 'AWS::CloudFormation::Stack' {
-				if e.ResourceStatus in %[CREATE_IN_PROGRESS UPDATE_IN_PROGRESS] {
-					last_update_start_event = e
-				}
-				# TODO: only print outputs for last UPDATE_COMPLETE
-				if e.ResourceStatus.ends_with('_COMPLETE') {
-					outputs = ``aws cloudformation describe-stacks --stack-name $stack_name``.the_one().get('Outputs', []).sort('OutputKey')
-					echo("")
-					for o in outputs {
-						echo("[output] ${o.OutputKey} ${o.OutputValue} - ${o.get('Description', '(no description)')}")
 
+				if e.LogicalResourceId == stack_name {
+					if e.ResourceStatus in %[CREATE_IN_PROGRESS UPDATE_IN_PROGRESS] {
+						last_update_start_event = e
 					}
-					if last_update_start_event {
-						echo("[time] Last create/update/delete took ${e.Timestamp.epoch_time() - last_update_start_event.Timestamp.epoch_time()} seconds")
+					# TODO: only print outputs for last UPDATE_COMPLETE
+					if e.ResourceStatus.ends_with('_COMPLETE') {
+						outputs = ``aws cloudformation describe-stacks --stack-name $stack_name``.the_one().get('Outputs', []).sort('OutputKey')
+						for o in outputs {
+							echo("${depth_str}[output] ${o.OutputKey} ${o.OutputValue} - ${o.get('Description', '(no description)')}")
+
+						}
+						if last_update_start_event {
+							echo("${depth_str}[time] Last create/update/delete took ${e.Timestamp.epoch_time() - last_update_start_event.Timestamp.epoch_time()} seconds")
+						}
+						if depth {
+							echo("${depth_str}Finished with nested stack ${stack_name}")
+							echo("")
+							return
+						} else {
+							echo("")
+						}
 					}
-					echo("")
+					continue
 				}
+
+				if e =~ {'ResourceStatus': /PROGRESS$/, 'PhysicalResourceId': Bool(X)} {
+					# $(${ARGV0} ${e.LogicalResourceId})
+					nested_stack = ``aws cloudformation describe-stacks --stack-name ${e.PhysicalResourceId}``.the_one()
+					main(nested_stack.StackName, interval, start_limit, empty_line_seconds, depth+1)
+				}
+
 			}
-
 		}
 		$(sleep $interval)
 	}
