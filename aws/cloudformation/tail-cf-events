@@ -22,14 +22,19 @@ F normalize_time_str(s:Str) {
 
 F epoch_time(s:Str) normalize_time_str(s).Time().Int() # NGS doesn't handle fractions of seconds yet
 
-F get_events(stack_name:Str, interval:Int) {
+F get_events(stack_name:Str, interval:Int, depth:Int) block b {
+	depth_str = '*** ' * depth
 	events = null
 	while not(events) {
 		try {
 			events = ``aws cloudformation describe-stack-events --stack-name $stack_name 2>${true}``.reverse()
 		} catch(e:ProcessFail) {
 			guard e.process.stderr ~ /Stack.*does not exist$/i  # We don't know how to handle any other error
-			error("Stack does not exist. Retrying in ${interval} seconds.")
+			if depth {
+				echo("${depth_str}Nested stack ${stack_name} does not exist")
+				b.return([])
+			}
+			error("Stack ${stack_name} does not exist. Retrying in ${interval} seconds.")
 			$(sleep $interval)
 		}
 	}
@@ -50,7 +55,10 @@ F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:In
 
 	while true {
 
-		events = get_events(stack_name, interval)
+		events = get_events(stack_name, interval, depth)
+
+		depth and not(events) returns
+		assert(events)
 
 		start = if last_seen_event in events {
 			# TODO: Fix "index() is returning null" when new stack is created but last_seen_event is from previous
@@ -79,7 +87,7 @@ F main(stack_name:Str, interval:Int=2, start_limit:Int=20, empty_line_seconds:In
 						last_update_start_event = e
 					}
 					# TODO: only print outputs for last UPDATE_COMPLETE
-					if e.ResourceStatus.ends_with('_COMPLETE') {
+					if e =~ {'ResourceStatus': AnyOf('CREATE_COMPLETE', 'UPDATE_COMPLETE')} {
 						outputs = ``aws cloudformation describe-stacks --stack-name $stack_name``.the_one().get('Outputs', []).sort('OutputKey')
 						for o in outputs {
 							echo("${depth_str}[output] ${o.OutputKey} ${o.OutputValue} - ${o.get('Description', '(no description)')}")
