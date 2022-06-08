@@ -1,0 +1,11 @@
+#!/usr/bin/env ngs
+
+F main(export_name:Str, times:Int=360, sleep:Int=10) {
+	log("Waiting for export ${export_name}")
+	retry(times=times, sleep=sleep, body={
+		``aws cloudformation list-exports``.any({"Name": export_name})
+	}, progress_cb=F(n, out_of) {
+		log("Attempt ${n} out of ${out_of}")
+	})
+	log("Export ${export_name} was found")
+}
