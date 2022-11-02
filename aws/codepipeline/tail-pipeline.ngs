@@ -1,11 +1,24 @@
 #!/usr/bin/env ngs
 
+F main() {
+	pipelines = ``aws codepipeline list-pipelines``
+	echo("Possible names:")
+	('* ' + pipelines.name).Lines().echo()
+	exit("Run: tail-pipeline.ngs NAME")
+}
+
 F main(name:Str) {
 	last_exec = null
 	while true {
 		section "Last ExecutionId" {
 			pipelineExecutionSummaries = ``aws codepipeline list-pipeline-executions --pipeline-name $name``
-			pipelineExecutionId = pipelineExecutionSummaries[0].pipelineExecutionId
+			pipelineExecution = pipelineExecutionSummaries[0]
+			pipelineExecutionId = pipelineExecution.pipelineExecutionId
+			if pipelineExecutionId != last_exec {
+				echo("=== Last/Current pipeline ${name} execution ===")
+				echo('  ' + pipelineExecution.map("$X: $Y").Lines())
+				last_exec = pipelineExecutionId
+			}
 		}
 
 		actionExecutionDetails = ``aws codepipeline list-action-executions --pipeline-name $name --filter "pipelineExecutionId=${pipelineExecutionId}"``
