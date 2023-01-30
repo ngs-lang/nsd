@@ -1,0 +1,13 @@
+#!/usr/bin/env ngs
+
+F main(name:Str) {
+	e = `aws lambda get-function-configuration --function-name $name`.decode_json().Environment.Variables
+	e.COLD_START_UNIQ = Time().Int().Str()
+	j = {
+		'FunctionName': name
+		'Environment': {
+			'Variables': e
+		}
+	}.encode_json()
+	$(aws lambda update-function-configuration --cli-input-json $j)
+}
