@@ -20,7 +20,6 @@ F main(target:Dir, name_filter:Str='AWSSupport-') {
 		if doc =~ {'Content': Str} {
 			content = doc.Content.decode_json()
 			if content =~ {'mainSteps': Arr} {
-				echo(content.mainSteps)
 				content.mainSteps.each_idx_val(F(idx, step) {
 					F _log(s:Str) {
 						log("[${doc.Name}/${idx}-${step.name}] ${s}")
