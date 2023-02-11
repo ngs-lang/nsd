@@ -1,0 +1,44 @@
+#!/usr/bin/env ngs
+
+RUNTIME_TO_EXT = [
+	[/^python/, 'py']
+]
+
+F runtime_to_ext(runtime:Str) {
+	RUNTIME_TO_EXT.first(F(r) runtime =~ r[0])[1]
+}
+
+F main(target:Dir, name_filter:Str='AWSSupport-') {
+	log("Extracting code to ${target}")
+	docs = ``aws ssm list-documents --filters "Key=Name,Values=${name_filter}"``
+	# Example: Name == 'AWSSupport-CheckAndMountEFS'
+	# AWSSupport-CloneXenEC2InstanceAndMigrateToNitro - has attachment
+	docs.each(F(doc) {
+		assert(doc.Name, /^[\w\d-]+$/)
+		log("Processing document ${doc.Name}")
+		doc = ``aws ssm get-document --name ${doc.Name}``
+		if doc =~ {'Content': Str} {
+			content = doc.Content.decode_json()
+			if content =~ {'mainSteps': Arr} {
+				echo(content.mainSteps)
+				content.mainSteps.each_idx_val(F(idx, step) {
+					F _log(s:Str) {
+						log("[${doc.Name}/${idx}-${step.name}] ${s}")
+					}
+					if not(step =~ {'action': 'aws:executeScript'}) {
+						_log("Skipping non-executeScript action ${step.action}")
+						return
+					}
+					assert(step.name, /^[\w\d-]+$/)
+					ext = runtime_to_ext(step.inputs.Runtime)
+					d = target / doc.Name / "${idx}-${step.name}"
+					_log("Output directory: ${d}")
+					$(mkdir -p ${d})
+					write(File(d / "script.${ext}"), step.inputs.Script)
+					store(File(d / "step.json"), step)
+				})
+				return
+			}
+		}
+	})
+}
