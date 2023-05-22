@@ -1,0 +1,11 @@
+#!/usr/bin/env ngs
+
+F main(*argv) main(30, *argv)
+
+F main(sleep:Int, *argv) {
+    while true {
+        log("=== ${Time()} ===")
+        $(top_level:: log: $*argv)
+        $(sleep $sleep)
+    }
+}
