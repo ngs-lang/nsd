@@ -1,5 +1,10 @@
 #!/usr/bin/env ngs
 
+# Assumes IAM role and runs the given program
+# assume-role.ngs ROLE_ARN SESSION_NAME YOUR_PROG YOUR_ARGS
+# Example:
+# path/to/assume-role.ngs arn:... test01 aws sts get-caller-identity
+
 FIELD_TO_ENV_VAR = %{
     AccessKeyId     AWS_ACCESS_KEY_ID
     SecretAccessKey AWS_SECRET_ACCESS_KEY
