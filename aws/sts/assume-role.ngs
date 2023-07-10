@@ -1,0 +1,15 @@
+#!/usr/bin/env ngs
+
+FIELD_TO_ENV_VAR = %{
+    AccessKeyId     AWS_ACCESS_KEY_ID
+    SecretAccessKey AWS_SECRET_ACCESS_KEY
+    SessionToken    AWS_SESSION_TOKEN
+}
+
+result = ``aws sts assume-role --role-arn ${ARGV[0]} --role-session-name ${ARGV[1]}``
+
+each(FIELD_TO_ENV_VAR, F(field, env_var) {
+    ENV[env_var] = result.Credentials[field]
+})
+
+$*ARGV[2..null]
