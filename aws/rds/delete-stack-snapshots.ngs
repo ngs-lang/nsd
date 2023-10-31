@@ -1,0 +1,30 @@
+#!/usr/bin/env ngs
+
+F list_snapshots(stack_name) {
+    # --filters "Name=tag:aws:cloudformation:stack-name,Values=${stack_name}"
+    # -> An error occurred (InvalidParameterValue) when calling the DescribeDBClusterSnapshots operation: Unrecognized filter name: tag:aws:cloudformation:stack-name
+    # Filtering on client side then
+    ``aws rds describe-db-cluster-snapshots --page-size 100``.filter({'TagList': {'aws:cloudformation:stack-name': stack_name}}).DBClusterSnapshotIdentifier
+}
+
+F main(stack_name) {
+    snapshots = list_snapshots(stack_name)
+    echo("Snapshots do be deleted (${snapshots.len()}):")
+    snapshots.each(echo)
+    exit("Run as $ARGV0 $stack_name confirm to delete")
+}
+
+F main(stack_name, confirm) {
+    assert(confirm, 'confirm', 'second command line argument must be "confirm" to confirm deletion')
+    snapshots = list_snapshots(stack_name)
+    snapshots.each(F(s) {
+        $(log: aws rds delete-db-cluster-snapshot --db-cluster-snapshot-identifier $s)
+    })
+}
+
+F main() {
+    echo("Usage:")
+    echo("  $ARGV0 STACK_NAME - list snapshots to be deleted")
+    echo("  $ARGV0 STACK_NAME confirm - delete snapshots")
+    exit()
+}
