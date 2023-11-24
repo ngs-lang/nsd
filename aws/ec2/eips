@@ -1,0 +1,8 @@
+F main(*profiles) {
+    addrs = profiles.pmap(F(p) {
+        ips = AWS2::regions(%(aws ec2 describe-addresses --profile $p))::{ A.A_Profile = ConstIter(p) }
+        ips .= map(X.rejectk(AnyOf(%[NetworkInterfaceId NetworkInterfaceOwnerId Domain NetworkBorderGroup PublicIpv4Pool])))
+        ips
+    }).flatten()
+    Table2::Table(addrs).echo()
+}
