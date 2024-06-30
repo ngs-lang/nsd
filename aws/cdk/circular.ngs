@@ -1,0 +1,39 @@
+#!/usr/bin/env ngs
+
+# Circular dependency analyzer.
+# Run example: /path/to/circular.ngs check 'Circular dependency between resources: [ALBwwwwpservWpCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy060E60A6, ALBListener443ListenerCertificatewpservWp1E3709965, ALBwwwwpservWpCertificateCertificateRequestorFunction007993C1, ECSContainerServiceswpWpService58642834, ALBwwwwpservWpAliasAC97BB43, ALBwpservWpCertificateCertificateRequestorResource312711EF, ALBListener443ListenerCertificatewwwwpservWp1C0615700, ALBListener443ListenerCertificateredirect1EAFFE28D, ALBredirectRedirectRule70B74EBF, ALBredirectCertificateCertificateRequestorResourceC1A53ECF, ALBwpservWpAliasD7E24A79, ALBwwwwpservWpRedirectRule86832E89, ALBListener443FargateContainerServicewpservWpRule221A14A6, ALBwwwwpservWpCertificateCertificateRequestorResource2367DE29, ALBredirectCertificateCertificateRequestorFunctionDAACF2B8, ALBwpservWpCertificateCertificateRequestorFunction75DE523B, projcNestedStackprojcNestedStackResource3490C978, ALBredirectCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy22F93FAE, ALBredirectAlias5428E239, ALBwpservWpCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy828CAC53]'
+
+ns {
+    F load_manifest() fetch('cdk.out/manifest.json')
+
+    F check(err:Str) {
+        assert(err, Pfx('Circular dependency between resources:'), InvalidArgument())
+        m = err ~ /\[(.+)\]/  # TODO: improve =~ enough and switch to it
+        assert(m)
+        resources = m[1].split(', ').Hash({null}).sortk()
+        # log("Resources ${resources}")
+        manifest = load_manifest()
+
+        manifest.artifacts.filter(F(k, v) v =~ {'type': 'aws:cloudformation:stack'}).each(F(stack, stack_data) {
+            stack_data.metadata.each(F(logical_path, md) {
+                elt = md.first({"type": "aws:cdk:logicalId"}, null)
+                not(elt) returns
+                if elt.data in resources {
+                    resources[elt.data] = {
+                        'stack': stack
+                        'logical_path': logical_path
+                    }
+                }
+            })
+        })
+        resources
+    }
+
+    F stacks(err:Str) {
+        check(err).values().stack.uniq()
+    }
+
+    F paths(err:Str) {
+        check(err).values().logical_path
+    }
+}
