@@ -53,6 +53,7 @@ ns {
 			r =~ AtPath(Branch(Any), {'Ref': logical_ids -> res.refs.push(X) })
 			r =~ AtPath(Branch(Any), {'Fn::GetAtt': [Capture('ref', logical_ids), Str] -> F(val, mc) { res.refs.push( mc.named.ref ) } })
 			r =~ {'DependsOn': Branch(Present(logical_ids -> res.refs.push(X))) }
+			assert(res.refs, "Could not find refs in ${logical_id}")
 		}) # .filter(F(k, v) v.refs)
 	}
 
