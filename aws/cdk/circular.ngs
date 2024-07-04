@@ -1,39 +1,78 @@
 #!/usr/bin/env ngs
 
 # Circular dependency analyzer.
-# Run example: /path/to/circular.ngs check 'Circular dependency between resources: [ALBwwwwpservWpCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy060E60A6, ALBListener443ListenerCertificatewpservWp1E3709965, ALBwwwwpservWpCertificateCertificateRequestorFunction007993C1, ECSContainerServiceswpWpService58642834, ALBwwwwpservWpAliasAC97BB43, ALBwpservWpCertificateCertificateRequestorResource312711EF, ALBListener443ListenerCertificatewwwwpservWp1C0615700, ALBListener443ListenerCertificateredirect1EAFFE28D, ALBredirectRedirectRule70B74EBF, ALBredirectCertificateCertificateRequestorResourceC1A53ECF, ALBwpservWpAliasD7E24A79, ALBwwwwpservWpRedirectRule86832E89, ALBListener443FargateContainerServicewpservWpRule221A14A6, ALBwwwwpservWpCertificateCertificateRequestorResource2367DE29, ALBredirectCertificateCertificateRequestorFunctionDAACF2B8, ALBwpservWpCertificateCertificateRequestorFunction75DE523B, projcNestedStackprojcNestedStackResource3490C978, ALBredirectCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy22F93FAE, ALBredirectAlias5428E239, ALBwpservWpCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy828CAC53]'
+# Run example: /path/to/circular.ngs inspect_resources_print 'Circular dependency between resources: [ALBwwwwpservWpCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy060E60A6, ALBListener443ListenerCertificatewpservWp1E3709965, ALBwwwwpservWpCertificateCertificateRequestorFunction007993C1, ECSContainerServiceswpWpService58642834, ALBwwwwpservWpAliasAC97BB43, ALBwpservWpCertificateCertificateRequestorResource312711EF, ALBListener443ListenerCertificatewwwwpservWp1C0615700, ALBListener443ListenerCertificateredirect1EAFFE28D, ALBredirectRedirectRule70B74EBF, ALBredirectCertificateCertificateRequestorResourceC1A53ECF, ALBwpservWpAliasD7E24A79, ALBwwwwpservWpRedirectRule86832E89, ALBListener443FargateContainerServicewpservWpRule221A14A6, ALBwwwwpservWpCertificateCertificateRequestorResource2367DE29, ALBredirectCertificateCertificateRequestorFunctionDAACF2B8, ALBwpservWpCertificateCertificateRequestorFunction75DE523B, projcNestedStackprojcNestedStackResource3490C978, ALBredirectCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy22F93FAE, ALBredirectAlias5428E239, ALBwpservWpCertificateCertificateRequestorFunctionServiceRoleDefaultPolicy828CAC53]'
 
 ns {
-    F load_manifest() fetch('cdk.out/manifest.json')
+	F load_manifest() fetch('cdk.out/manifest.json')
 
-    F check(err:Str) {
-        assert(err, Pfx('Circular dependency between resources:'), InvalidArgument())
-        m = err ~ /\[(.+)\]/  # TODO: improve =~ enough and switch to it
-        assert(m)
-        resources = m[1].split(', ').Hash({null}).sortk()
-        # log("Resources ${resources}")
-        manifest = load_manifest()
+	F inspect_manifest(err:Str) {
+		assert(err, Pfx('Circular dependency between resources:'), InvalidArgument())
+		m = err ~ /\[(.+)\]/  # TODO: improve =~ enough and switch to it
+		assert(m)
+		resources = m[1].split(', ').Hash({null}).sortk()
+		# log("Resources ${resources}")
+		manifest = load_manifest()
 
-        manifest.artifacts.filter(F(k, v) v =~ {'type': 'aws:cloudformation:stack'}).each(F(stack, stack_data) {
-            stack_data.metadata.each(F(logical_path, md) {
-                elt = md.first({"type": "aws:cdk:logicalId"}, null)
-                not(elt) returns
-                if elt.data in resources {
-                    resources[elt.data] = {
-                        'stack': stack
-                        'logical_path': logical_path
-                    }
-                }
-            })
-        })
-        resources
-    }
+		m = manifest =~ {
+			'artifacts': {
+				Branch(Capture('stack_name', Str)): {
+					'type': 'aws:cloudformation:stack'
+					'properties': {
+						'templateFile': Capture('template_file', Str)
+					},
+					'metadata': {
+						Branch(Capture('logical_path', Str)): Present({
+							"type": "aws:cdk:logicalId"
+							"data": Capture('resource', AnyOf(resources.keys()))
+						}) -> F(x, mc:MatchContext) {
+							# echo("MATCH CONTEXT ${mc.path} ${mc.named}")
+							resources[mc.named.resource] = {
+							   'stack': mc.named.stack_name
+							   'logical_path': mc.named.logical_path
+							   'template_file': mc.named.template_file
+						   }
+						}
+					}
+				}
+			}
+		}
+		resources
+	}
 
-    F stacks(err:Str) {
-        check(err).values().stack.uniq()
-    }
+	F inspect_resources(err:Str) {
+		resources = inspect_manifest(err)
+		logical_ids = AnyOf(resources.keys())
+		assert(resources.values(), Absent(null), 'Failed to load some of the resources')
+		templates_files = resources.values().template_file.uniq().Hash(F(tf) fetch("cdk.out/${tf}"))
+		# log("Loaded templates_files ${templates_files}")
+		resources.each(F(logical_id, res) {
+			res.refs = []
+			r = templates_files[res.template_file].Resources[logical_id]
+			res.type = r.Type
+			r =~ AtPath(Branch(Any), {'Ref': logical_ids -> res.refs.push(X) })
+			r =~ AtPath(Branch(Any), {'Fn::GetAtt': [Capture('ref', logical_ids), Str] -> F(val, mc) { res.refs.push( mc.named.ref ) } })
+			r =~ {'DependsOn': Branch(Present(logical_ids -> res.refs.push(X))) }
+		}) # .filter(F(k, v) v.refs)
+	}
 
-    F paths(err:Str) {
-        check(err).values().logical_path
-    }
+	F inspect_resources_print(err:Str) {
+		resources = inspect_resources(err)
+		resources.each(F(logical_id, res) {
+			echo("${res.logical_path} ${logical_id} ${res.type} (${res.template_file})")
+			("  * " + res.refs).each(echo)
+			echo("")
+		})
+		null
+	}
+
+	F stacks(err:Str) {
+		check(err).values().stack.uniq()
+	}
+
+	F paths(err:Str) {
+		check(err).values().logical_path
+	}
+
+
 }
