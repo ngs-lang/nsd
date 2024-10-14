@@ -1,0 +1,27 @@
+#!/usr/bin/env ngs
+ns {
+
+    F delete_by_param(k:Str, v:Str) {
+        list_by_param(k, v).each(F(stack) {
+            $(log: aws cloudformation delete-stack --stack-name ${stack.StackName})
+        })
+    }
+
+    F list_by_param(k:Str, v:Str) list().filter({'Parameters': {k: v}})
+
+    F list() {
+        ``aws cloudformation describe-stacks``.fields(%[StackName StackStatus Parameters Tags CreationTime LastUpdatedTime]).each(F(x) {
+            x.Parameters .= Hash()
+        })
+    }
+
+    F params() {
+        ret = {}
+        list().Parameters.each(F(h) {
+            h.each(F(k, v) {
+                ret.dflt(k, []).push(v)
+            })
+        })
+        ret
+    }
+}
